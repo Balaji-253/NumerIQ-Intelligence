@@ -165,6 +165,11 @@ def summarize_predictions(
         for item in successful
     )
 
+    count_mismatches_all = sum(
+        item["digit_count"] != len(item["ground_truth"])
+        for item in predictions
+    )
+
     no_detections = sum(
         item["digit_count"] == 0
         for item in successful
@@ -195,6 +200,16 @@ def summarize_predictions(
         "segmentation_count_mismatch_rate": (
             count_mismatches / len(successful)
             if successful else None
+        ),
+        "digit_count_mismatch_rate_all": (
+            count_mismatches_all / total
+        ),
+        "digit_count_mismatch_rate_successful": (
+            count_mismatches / len(successful)
+            if successful else None
+        ),
+        "digit_count_accuracy_all": (
+            1.0 - count_mismatches_all / total
         ),
         "no_detection_rate": (
             no_detections / len(successful)

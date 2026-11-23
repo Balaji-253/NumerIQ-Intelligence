@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -9,15 +10,18 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from src.inference import Predictor
 from src.sequence_recognizer import SequenceRecognizer
+from src.v2_inference import DEFAULT_V2_CHECKPOINT, V2Predictor
+from src.v2_sequence_recognizer import V2SequenceRecognizer
 
 
 APP_NAME = "NumerIQ Intelligence API"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_WIDTH = 3000
@@ -39,24 +43,48 @@ logging.basicConfig(
 
 logger = logging.getLogger("numeriq.api")
 
-predictor: Predictor | None = None
-sequence_recognizer: SequenceRecognizer | None = None
+predictor: Predictor | V2Predictor | None = None
+sequence_recognizer: SequenceRecognizer | V2SequenceRecognizer | None = None
+active_engine = "legacy"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global predictor, sequence_recognizer
+    global predictor, sequence_recognizer, active_engine
 
     logger.info("Starting %s version %s", APP_NAME, APP_VERSION)
 
+    active_engine = os.getenv("NUMERIQ_ENGINE", "legacy").strip().lower()
+
+    if active_engine not in {"legacy", "v2"}:
+        raise ValueError(
+            "NUMERIQ_ENGINE must be either 'legacy' or 'v2'."
+        )
+
     try:
-        predictor = Predictor()
-        sequence_recognizer = SequenceRecognizer(predictor)
-        logger.info("AI model and sequence recognizer loaded successfully")
+        if active_engine == "v2":
+            checkpoint_path = os.getenv(
+                "NUMERIQ_V2_CHECKPOINT",
+                DEFAULT_V2_CHECKPOINT,
+            )
+            predictor = V2Predictor(checkpoint_path=checkpoint_path)
+            sequence_recognizer = V2SequenceRecognizer(predictor)
+        else:
+            predictor = Predictor()
+            sequence_recognizer = SequenceRecognizer(predictor)
+
+        logger.info(
+            "AI model loaded successfully | engine=%s",
+            active_engine,
+        )
+
     except FileNotFoundError:
         predictor = None
         sequence_recognizer = None
-        logger.warning("Model checkpoint not found. Prediction unavailable.")
+        logger.exception(
+            "Model checkpoint missing | engine=%s",
+            active_engine,
+        )
 
     yield
 
@@ -73,6 +101,23 @@ app = FastAPI(
     ),
     version=APP_VERSION,
     lifespan=lifespan,
+)
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "NUMERIQ_CORS_ORIGINS",
+        "http://127.0.0.1:5173,http://localhost:5173",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 

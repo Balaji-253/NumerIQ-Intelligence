@@ -128,3 +128,53 @@ def test_all_processing_failures_produce_zero_accuracy():
 def test_percentile_rejects_invalid_range():
     with pytest.raises(ValueError):
         percentile([1.0, 2.0], 120)
+
+
+def test_digit_count_metrics_include_processing_failures():
+    from src.sequence_evaluation import summarize_predictions
+
+    records = [
+        {
+            "ground_truth": "123",
+            "prediction": "123",
+            "status": "completed",
+            "digit_count": 3,
+            "low_confidence": False,
+            "latency_ms": 10.0,
+        },
+        {
+            "ground_truth": "456",
+            "prediction": "",
+            "status": "processing_error",
+            "digit_count": 0,
+            "low_confidence": False,
+            "latency_ms": 20.0,
+        },
+    ]
+
+    metrics = summarize_predictions(records)
+
+    assert metrics["digit_count_mismatch_rate_all"] == 0.5
+    assert metrics["digit_count_mismatch_rate_successful"] == 0.0
+    assert metrics["digit_count_accuracy_all"] == 0.5
+
+
+def test_digit_count_metrics_when_all_samples_fail():
+    from src.sequence_evaluation import summarize_predictions
+
+    records = [
+        {
+            "ground_truth": "1234",
+            "prediction": "",
+            "status": "processing_error",
+            "digit_count": 0,
+            "low_confidence": False,
+            "latency_ms": 12.0,
+        }
+    ]
+
+    metrics = summarize_predictions(records)
+
+    assert metrics["digit_count_mismatch_rate_all"] == 1.0
+    assert metrics["digit_count_mismatch_rate_successful"] is None
+    assert metrics["digit_count_accuracy_all"] == 0.0

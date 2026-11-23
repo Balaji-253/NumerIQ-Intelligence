@@ -4,3 +4,7 @@ __pycache__/
 data/
 artifacts/*
 !artifacts/.gitkeep
+
+# Local backup copies (preserve locally, exclude from Git)
+*.backup
+*.pre_v2_backup

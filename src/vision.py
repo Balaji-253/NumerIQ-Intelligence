@@ -91,20 +91,24 @@ def enhance_image(image: Image.Image) -> dict[str, Any]:
         cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )
 
-    # Determine whether the background is predominantly white.
-    border = np.concatenate([
-        enhanced[0, :],
-        enhanced[-1, :],
-        enhanced[:, 0],
-        enhanced[:, -1],
-    ])
+    # A uniform image contains no handwriting, regardless of its color.
+    if int(enhanced.max()) == int(enhanced.min()):
+        binary = np.zeros_like(enhanced)
+    else:
+        # Determine whether the background is predominantly white.
+        border = np.concatenate([
+            enhanced[0, :],
+            enhanced[-1, :],
+            enhanced[:, 0],
+            enhanced[:, -1],
+        ])
 
-    border_mean = float(np.mean(border))
-    image_mean = float(np.mean(enhanced))
+        border_mean = float(np.mean(border))
+        image_mean = float(np.mean(enhanced))
 
-    # Convert to white foreground on black background.
-    if border_mean > image_mean:
-        binary = cv2.bitwise_not(binary)
+        # Convert to white foreground on black background.
+        if border_mean > image_mean:
+            binary = cv2.bitwise_not(binary)
 
     return {
         "grayscale": denoised,
