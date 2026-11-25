@@ -5,7 +5,7 @@ export interface DigitPrediction {
   is_uncertain: boolean
   bbox: number[]
   area: number
-  component_count: number
+  component_count?: number
   top3: unknown[]
 }
 
@@ -17,34 +17,66 @@ export interface SequencePrediction {
   warnings: string[]
 }
 
+export interface SingleDigitPrediction {
+  digit: number
+  confidence: number
+  is_uncertain: boolean
+  top3: unknown[]
+  top5: unknown[]
+  model: string
+  inference_device: string
+  latency_ms: number
+}
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 ).replace(/\/$/, '')
 
-export async function recognizeSequence(
+async function uploadImage<T>(
+  endpoint: string,
   blob: Blob,
   signal?: AbortSignal,
-): Promise<SequencePrediction> {
+): Promise<T> {
   const formData = new FormData()
+  formData.append('file', blob, 'numeriq-upload.png')
 
-  formData.append('file', blob, 'numeriq-canvas.png')
-
-  const response = await fetch(
-    `${API_BASE_URL}/predict/sequence`,
-    {
-      method: 'POST',
-      body: formData,
-      signal,
-    },
-  )
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    body: formData,
+    signal,
+  })
 
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
     throw new Error(
-      payload?.detail || `Recognition failed (${response.status})`,
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : `Recognition failed (${response.status})`,
     )
   }
 
-  return payload as SequencePrediction
+  return payload as T
+}
+
+export function recognizeSequence(
+  blob: Blob,
+  signal?: AbortSignal,
+): Promise<SequencePrediction> {
+  return uploadImage('/predict/sequence', blob, signal)
+}
+
+export function recognizeSingleDigit(
+  blob: Blob,
+  signal?: AbortSignal,
+): Promise<SingleDigitPrediction> {
+  return uploadImage('/predict', blob, signal)
+}
+
+export async function checkApiHealth(): Promise<boolean> {
+  const response = await fetch(`${API_BASE_URL}/ready`)
+  if (!response.ok) return false
+
+  const result = await response.json()
+  return result.status === 'ready' && result.model_loaded === true
 }
